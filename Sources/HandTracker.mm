@@ -3,18 +3,34 @@
 #import "mediapipe/objc/MPPCameraInputSource.h"
 #import "mediapipe/objc/MPPLayerRenderer.h"
 #include "mediapipe/framework/formats/landmark.pb.h"
-
+#include "mediapipe/framework/formats/rect.pb.h"
+#include "mediapipe/framework/formats/classification.pb.h"
 static NSString* const kGraphName = @"hand_tracking_mobile_gpu";
 static const char* kInputStream = "input_video";
 static const char* kOutputStream = "output_video";
 static const char* kLandmarksOutputStream = "hand_landmarks";
+static const char* kWorldLandmarksOutputStream = "hand_world_landmarks";
+static const char* kHandednessOutputStream = "handedness";
+static const char* kNumHandsInputSidePacket = "num_hands";
 static const char* kVideoQueueLabel = "com.google.mediapipe.example.videoQueue";
 
+// Max number of hands to detect/process.
+static const int kNumHands = 2;
+
+typedef NS_ENUM(NSInteger, HTHandedness) {
+    HTHandednessUnknown,
+    HTHandednessRight,
+    HTHandednessLeft,
+};
+
 @interface HandTracker() <MPPGraphDelegate>
+
 @property(nonatomic) MPPGraph* mediapipeGraph;
+@property (nonatomic) HTHandedness currentHandedness;
+@property (nonatomic) float currentHandScore;
 @end
 
-@interface Landmark()
+@interface HTLandmark()
 - (instancetype)initWithX:(float)x y:(float)y z:(float)z;
 @end
 
@@ -52,8 +68,12 @@ static const char* kVideoQueueLabel = "com.google.mediapipe.example.videoQueue";
     
     // Create MediaPipe graph with mediapipe::CalculatorGraphConfig proto object.
     MPPGraph* newGraph = [[MPPGraph alloc] initWithGraphConfig:config];
+    [newGraph setSidePacket:(mediapipe::MakePacket<int>(kNumHands)) named:kNumHandsInputSidePacket];
     [newGraph addFrameOutputStream:kOutputStream outputPacketType:MPPPacketTypePixelBuffer];
     [newGraph addFrameOutputStream:kLandmarksOutputStream outputPacketType:MPPPacketTypeRaw];
+    [newGraph addFrameOutputStream:kWorldLandmarksOutputStream outputPacketType:MPPPacketTypeRaw];
+    [newGraph addFrameOutputStream:kHandednessOutputStream outputPacketType:MPPPacketTypeRaw];
+
     return newGraph;
 }
 
@@ -94,20 +114,50 @@ static const char* kVideoQueueLabel = "com.google.mediapipe.example.videoQueue";
             fromStream:(const std::string&)streamName {
     if (streamName == kLandmarksOutputStream) {
         if (packet.IsEmpty()) { return; }
-        const auto& landmarks = packet.Get<::mediapipe::NormalizedLandmarkList>();
+        const auto& multiHandLandmarks = packet.Get<std::vector<::mediapipe::NormalizedLandmarkList>>();
+        if (multiHandLandmarks.size() == 0){return;}
+        const auto& landmarks = multiHandLandmarks[0];
+
+        NSMutableArray<HTLandmark *> *result = [NSMutableArray array];
         
-        //        for (int i = 0; i < landmarks.landmark_size(); ++i) {
-        //            NSLog(@"\tLandmark[%d]: (%f, %f, %f)", i, landmarks.landmark(i).x(),
-        //                  landmarks.landmark(i).y(), landmarks.landmark(i).z());
-        //        }
-        NSMutableArray<Landmark *> *result = [NSMutableArray array];
         for (int i = 0; i < landmarks.landmark_size(); ++i) {
-            Landmark *landmark = [[Landmark alloc] initWithX:landmarks.landmark(i).x()
-                                                           y:landmarks.landmark(i).y()
-                                                           z:landmarks.landmark(i).z()];
+            HTLandmark *landmark = [[HTLandmark alloc] initWithX:landmarks.landmark(i).x()
+                                                             y:landmarks.landmark(i).y()
+                                                             z:landmarks.landmark(i).z()];
             [result addObject:landmark];
         }
-        [_delegate handTracker: self didOutputLandmarks: result];
+        [_delegate handTracker:self didOutputLandmarks:result];
+        
+    }
+    else if (streamName == kWorldLandmarksOutputStream) {
+        if (packet.IsEmpty()) { return; }
+        const auto& multiHandLandmarks = packet.Get<std::vector<::mediapipe::LandmarkList>>();
+        if (multiHandLandmarks.size() == 0){return;}
+        const auto& landmarks = multiHandLandmarks[0];
+                
+        NSMutableArray<HTLandmark *> *result = [NSMutableArray array];
+        
+        for (int i = 0; i < landmarks.landmark_size(); ++i) {
+            HTLandmark *landmark = [[HTLandmark alloc] initWithX:landmarks.landmark(i).x()
+                                                             y:landmarks.landmark(i).y()
+                                                             z:landmarks.landmark(i).z()];
+            [result addObject:landmark];
+        }
+        [_delegate handTracker:self didOutputWorldLandmarks:result];
+        
+    }
+    else if (streamName == kHandednessOutputStream) {
+        const auto multiClassificationList = packet.Get<std::vector<::mediapipe::ClassificationList>>();
+        if (multiClassificationList.size() == 0){return;}
+        const auto& classificationList = multiClassificationList[0];
+        if (classificationList.classification_size() > 0) {
+            auto classification = classificationList.classification(0);
+            
+            //the length of "right" is 5 and "left" is 4........T_T
+            _currentHandedness = classification.label().size() == 5 ? HTHandednessRight : HTHandednessLeft;
+            _currentHandScore = classification.score();
+            [_delegate handTracker:self didOutputHandness:_currentHandedness==HTHandednessRight didOutputScore:_currentHandScore];
+        }
     }
 }
 
@@ -120,7 +170,7 @@ static const char* kVideoQueueLabel = "com.google.mediapipe.example.videoQueue";
 @end
 
 
-@implementation Landmark
+@implementation HTLandmark
 
 - (instancetype)initWithX:(float)x y:(float)y z:(float)z
 {
