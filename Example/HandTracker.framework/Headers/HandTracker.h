@@ -3,12 +3,12 @@
 
 @class HTLandmark;
 @class HandTracker;
-@class HTHandInfo;
 
 @protocol TrackerDelegate <NSObject>
-- (void)handTracker: (HandTracker*)handTracker didOutputLandmarks:(NSArray<HTLandmark *> *)landmarks;
-- (void)handTracker: (HandTracker*)handTracker didOutputWorldLandmarks:(NSArray<HTLandmark *> *)landmarks;
-- (void)handTracker: (HandTracker*)handTracker didOutputHandness: (BOOL)isRightHand didOutputScore: (float)score;
+- (void)handTracker: (HandTracker*)handTracker didOutputLandmarks:(NSArray<HTLandmark *> *)landmarks 
+        didOutputWorldLandmarks:(NSArray<HTLandmark *> *)landmarksWorld
+        didOutputHandness: (BOOL)isRightHand 
+        didOutputScore: (float)score;
 - (void)handTracker: (HandTracker*)handTracker didOutputPixelBuffer: (CVPixelBufferRef)pixelBuffer;
 @end
 

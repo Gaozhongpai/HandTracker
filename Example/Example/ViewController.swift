@@ -45,16 +45,8 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         }
     }
     
-    func handTracker(_ handTracker: HandTracker!, didOutputLandmarks landmarks: [HTLandmark]!) {
+    func handTracker(_ handTracker: HandTracker!, didOutputLandmarks landmarks: [HTLandmark]!, didOutputWorldLandmarks landmarksWorld: [HTLandmark]!, didOutputHandness isRightHand: Bool, didOutputScore score: Float) {
         print([landmarks[0].x, landmarks[0].y, landmarks[0].z])
-    }
-    
-    func handTracker(_ handTracker: HandTracker!, didOutputWorldLandmarks landmarks: [HTLandmark]!) {
-        // print([landmarks[0].x, landmarks[0].y, landmarks[0].z])
-    }
-    
-    func handTracker(_ handTracker: HandTracker!, didOutputHandness handedness: Bool, didOutputScore score:Float) {
-        // print(score)
     }
         
     func handTracker(_ handTracker: HandTracker!, didOutputPixelBuffer pixelBuffer: CVPixelBuffer!) {
